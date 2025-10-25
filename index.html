@@ -1,76 +1,33 @@
-<!doctype html>
-<html lang="ar" dir="rtl">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>فتح واتساب تلقائي حسب منطقتك</title>
-  <style>
-    body{font-family:Tajawal,Arial; background:#0f172a; color:#e6eef8; display:flex; align-items:center; justify-content:center; height:100vh; margin:0}
-    .card{background:#0b1330; padding:20px; border-radius:14px; width:360px; box-shadow:0 4px 16px rgba(0,0,0,0.6)}
-    h1{font-size:18px; margin-bottom:12px}
-    label{display:block; margin:10px 0 6px; font-size:13px; color:#cbd5e1}
-    input, textarea, button{width:100%; padding:10px; border-radius:8px; border:1px solid #233041; background:#061224; color:#e6eef8; box-sizing:border-box}
-    textarea{height:80px; resize:vertical}
-    button{margin-top:12px; cursor:pointer; border:none; background:#06b6d4; color:white; font-weight:600}
-    .note{font-size:12px; color:#94a3b8; margin-top:8px}
-    .error{color:#ff7b7b; font-size:13px; margin-top:8px}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>افتح واتساب تلقائيًا حسب منطقتك</h1>
+<script>
+  // حوّل الأرقام العربية إلى إنجليزية
+  const toAsciiDigits = s => s.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
 
-    <label>رمز الدولة</label>
-    <input id="country" type="text" placeholder="يتم تحديده تلقائيًا..." readonly />
+  // تنظيف عام
+  const onlyDigits = s => toAsciiDigits(s).replace(/\D/g, '');
 
-    <label>رقم الجوال (بدون صفر)</label>
-    <input id="phone" type="text" placeholder="512345678" />
+  function buildWaNumber(countryCodeRaw, numberRaw){
+    let cc = onlyDigits(countryCodeRaw);   // رمز الدولة بدون +
+    let n  = onlyDigits(numberRaw);        // الرقم
 
-    <label>الرسالة (اختياري)</label>
-    <textarea id="text" placeholder="اكتب الرسالة هنا (اختياري)"></textarea>
+    // عالج 00 و 0 في بداية الرقم
+    if (n.startsWith('00')) n = n.slice(2);
+    while (n.startsWith('0')) n = n.slice(1);
 
-    <button id="openBtn">افتح واتساب</button>
-    <div class="note">يتم تحديد رمز البلد من موقعك تلقائيًا.</div>
-    <div id="err" class="error" style="display:none"></div>
-  </div>
-
-  <script>
-    const countryInput = document.getElementById('country');
-    const phoneInput = document.getElementById('phone');
-    const textInput = document.getElementById('text');
-    const openBtn = document.getElementById('openBtn');
-    const err = document.getElementById('err');
-
-    async function detectCountryCode() {
-      try {
-        const res = await fetch('https://ipapi.co/json/');
-        const data = await res.json();
-        const code = data.country_calling_code ? data.country_calling_code.replace('+', '') : '';
-        if (code) countryInput.value = `+${code}`;
-        else countryInput.value = '+966'; // fallback للسعودية
-      } catch {
-        countryInput.value = '+966';
-      }
+    // لو المستخدم لصق الرقم الدولي كامل (يبدأ برمز الدولة)، لا تكرر الرمز
+    if (cc && n.startsWith(cc)) {
+      n = n.slice(cc.length);
+      while (n.startsWith('0')) n = n.slice(1); // تأكيد إزالة أي صفر بعد القص
     }
 
-    detectCountryCode();
+    // تحقق الطول
+    const full = cc + n;
+    if (!cc || !/^\d{1,4}$/.test(cc)) throw new Error('رمز الدولة غير صحيح');
+    if (!/^\d{6,15}$/.test(n)) throw new Error('رقم الجوال غير صحيح');
 
-    openBtn.addEventListener('click', () => {
-      err.style.display = 'none';
-      const countryCode = countryInput.value.replace(/\D/g,'');
-      let number = phoneInput.value.replace(/\D/g,'');
-      while (number.startsWith('0')) number = number.slice(1);
-      if (!/^\d{6,15}$/.test(number)) {
-        err.textContent = "رقم الجوال غير صالح";
-        err.style.display = 'block';
-        return;
-      }
-      const message = encodeURIComponent(textInput.value || '');
-      const waLink = message
-        ? `https://wa.me/${countryCode}${number}?text=${message}`
-        : `https://wa.me/${countryCode}${number}`;
-      window.open(waLink, '_blank');
-    });
-  </script>
-</body>
-</html>
+    return full; // مثال: 966512345678
+  }
+
+  // مثال استخدام داخل زر الفتح:
+  // const full = buildWaNumber(countryInput.value, phoneInput.value);
+  // const url = text ? `https://wa.me/${full}?text=${encodeURIComponent(text)}` : `https://wa.me/${full}`;
+</script>
