@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>واتساب – فتح محادثة</title>
+  <style>
+    :root{--bg:#0f172a;--card:#0b1330;--text:#e6eef8;--muted:#94a3b8;--border:#233041;--btn:#06b6d4}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:Tahoma,Arial}
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{background:var(--card);width:360px;max-width:100%;padding:20px;border-radius:14px;border:1px solid var(--border);box-shadow:0 6px 18px rgba(0,0,0,.5)}
+    h1{font-size:18px;margin:0 0 12px}
+    label{display:block;margin:10px 0 6px;color:#cbd5e1;font-size:13px}
+    input,textarea,select,button{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:#061224;color:var(--text)}
+    textarea{height:90px;resize:vertical}
+    .row{display:flex;gap:8px}
+    .row .w-40{width:40%}.row .w-60{width:60%}
+    button{margin-top:12px;border:none;cursor:pointer;background:var(--btn);color:#fff;font-weight:600}
+    .note{font-size:12px;color:var(--muted);margin-top:8px}
+    .error{display:none;color:#ff8080;margin-top:8px;font-size:13px}
+    .ok{display:none;color:#37d399;margin-top:8px;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>افتح محادثة واتساب</h1>
+
+      <label>رمز الدولة</label>
+      <div class="row">
+        <select id="preset" class="w-40">
+          <option value="auto">تلقائي</option>
+          <option value="966">+966 (السعودية)</option>
+          <option value="971">+971 (الإمارات)</option>
+          <option value="20">+20 (مصر)</option>
+          <option value="965">+965 (الكويت)</option>
+          <option value="968">+968 (عُمان)</option>
+          <option value="973">+973 (البحرين)</option>
+          <option value="1">+1 (USA)</option>
+          <option value="other">يدوي</option>
+        </select>
+        <input id="cc" class="w-60" type="text" placeholder="مثال: 966" />
+      </div>
+
+      <label>رقم الجوال (بدون صفر البداية)</label>
+      <input id="phone" type="text" inputmode="numeric" placeholder="512345678" />
+
+      <label>رسالة (اختياري)</label>
+      <textarea id="text" placeholder="اكتب الرسالة هنا (اختياري)"></textarea>
+
+      <button id="go">افتح واتساب</button>
+      <div id="err" class="error"></div>
+      <div id="ok" class="ok"></div>
+      <div class="note">القانون: رمز الدولة (بدون +) + الرقم الوطني بدون صفر البداية. مثال: <b>966512345678</b>.</div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const preset = document.getElementById('preset');
+      const cc     = document.getElementById('cc');
+      const phone  = document.getElementById('phone');
+      const text   = document.getElementById('text');
+      const go     = document.getElementById('go');
+      const err    = document.getElementById('err');
+      const ok     = document.getElementById('ok');
+
+      // خرائط كشف البلد محليًا بدون انترنت
+      const locale = (Intl.DateTimeFormat().resolvedOptions().locale || navigator.language || 'ar-SA').toUpperCase();
+      const guessCC = (() => {
+        // جرّب أخذ الجزء بعد الشرطة (ar-SA -> SA)
+        const m = locale.match(/[-_](\w{2})/);
+        const region = m ? m[1] : '';
+        const map = { SA:'966', AE:'971', EG:'20', KW:'965', OM:'968', BH:'973', QA:'974', US:'1' };
+        return map[region] || '966';
+      })();
+
+      // اضبط القيمة الابتدائية
+      preset.value = 'auto';
+      cc.value = guessCC;
+
+      preset.addEventListener('change', () => {
+        if (preset.value === 'auto') cc.value = guessCC;
+        else if (preset.value === 'other') cc.value = '';
+        else cc.value = preset.value;
+      });
+
+      // أدوات مساعدة
+      const toAsciiDigits = s => s.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+      const onlyDigits = s => toAsciiDigits(String(s||'')).replace(/\D/g, '');
+
+      function buildWaNumber(ccRaw, numRaw){
+        let c = onlyDigits(ccRaw);
+        let n = onlyDigits(numRaw);
+
+        // شيل 00 و الأصفار البادئة
+        if (n.startsWith('00')) n = n.slice(2);
+        while (n.startsWith('0')) n = n.slice(1);
+
+        // لو الرقم ملصوق كامل برمز الدولة، لا تكرر
+        if (c && n.startsWith(c)) {
+          n = n.slice(c.length);
+          while (n.startsWith('0')) n = n.slice(1);
+        }
+
+        if (!c || !/^\d{1,4}$/.test(c)) throw new Error('رمز الدولة غير صحيح');
+        if (!/^\d{6,15}$/.test(n)) throw new Error('رقم الجوال غير صحيح');
+        return c + n;
+      }
+
+      function showErr(msg){ err.textContent = msg; err.style.display='block'; ok.style.display='none'; }
+      function showOk(msg){ ok.textContent = msg; ok.style.display='block'; err.style.display='none'; }
+
+      go.addEventListener('click', () => {
+        try{
+          const full = buildWaNumber(cc.value, phone.value);
+          const message = encodeURIComponent(text.value || '');
+          const url = message ? `https://wa.me/${full}?text=${message}` : `https://wa.me/${full}`;
+          showOk(`جاهز: ${full}`);
+          window.open(url, '_blank');
+        }catch(e){
+          showErr(e.message || 'خطأ غير متوقع');
+        }
+      });
+
+      // Enter لراحة الاستخدام
+      phone.addEventListener('keydown', e => { if (e.key === 'Enter') go.click(); });
+      cc.addEventListener('keydown', e => { if (e.key === 'Enter') go.click(); });
+      text.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey||e.metaKey)) go.click(); });
+    })();
+  </script>
+</body>
+</html>
